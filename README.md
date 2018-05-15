@@ -1,0 +1,1 @@
+# qlik-purge-rule-cache
