@@ -1,9 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Net;
-using System.Text;
-using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 
 namespace PurgeRuleCache
@@ -13,15 +9,49 @@ namespace PurgeRuleCache
         static void Main(string[] args)
         {
             ServicePointManager.ServerCertificateValidationCallback = delegate { return true; };
-            if (args.Length < 1)
+            if (args.Length == 0)
             {
                 PrintUsage();
             }
 
-            var url = args[0];
-            Console.WriteLine("Connecting to " + url);
-            var client = new RestClient(url);
-            client.AsNtlmUserViaProxy();
+            var connectionType = GetConnectionType(args[0]);
+            RestClient client;
+
+            switch (connectionType)
+            {
+                case RestClient.ConnectionType.NtlmUserViaProxy:
+                    if (args.Length != 2)
+                    {
+                        PrintUsage();
+                        return;
+                    }
+
+                    client = new RestClient(args[1]);
+                    client.AsNtlmUserViaProxy();
+                    break;
+                case RestClient.ConnectionType.DirectConnection:
+                    if (args.Length != 5)
+                    {
+                        PrintUsage();
+                        return;
+                    }
+
+                    client = new RestClient(args[1]);
+                    int port;
+                    if (!int.TryParse(args[2], out port))
+                    {
+                        PrintUsage();
+                    }
+
+                    var certificates = client.LoadCertificateFromStore();
+                    client.AsDirectConnection(args[3], args[4], port, false, certificates);
+                    break;
+                default:
+                    PrintUsage();
+                    return;
+            }
+
+            Console.WriteLine("Connecting to {0} using {1}", client.Url, connectionType);
             try
             {
                 client.Get("/qrs/about");
@@ -41,10 +71,25 @@ namespace PurgeRuleCache
             }
         }
 
+        private static RestClient.ConnectionType GetConnectionType(string arg)
+        {
+            switch (arg)
+            {
+                case "--ntlm": return RestClient.ConnectionType.NtlmUserViaProxy;
+                case "--direct": return RestClient.ConnectionType.DirectConnection;
+                default:
+                    Console.WriteLine("Unknown connection type: " + arg);
+                    PrintUsage();
+                    return default(RestClient.ConnectionType);
+            }
+        }
+
         private static void PrintUsage()
         {
-            Console.WriteLine("Usage:   PurgeRuleCache.exe <url>");
-            Console.WriteLine("Example: PurgeRuleCache.exe https://my.server.url");
+            Console.WriteLine("Usage:   PurgeRuleCache.exe --ntlm   <url>");
+            Console.WriteLine("         PurgeRuleCache.exe --direct <url> <port> <userDir> <userId>");
+            Console.WriteLine("Example: PurgeRuleCache.exe --ntlm   https://my.server.url");
+            Console.WriteLine("         PurgeRuleCache.exe --direct https://my.server.url 4242 MyUserDir MyUserId");
             Environment.Exit(1);
         }
 

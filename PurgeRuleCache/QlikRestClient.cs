@@ -12,6 +12,7 @@ namespace PurgeRuleCache
 {
     public class RestClient : WebClient
     {
+        public string Url => Uri.AbsoluteUri;
         private Uri Uri { get; set; }
         private string _userDirectory;
         private string _userId;
@@ -64,13 +65,31 @@ namespace PurgeRuleCache
             _userDirectory = Environment.UserDomainName;
         }
 
-        public void LoadCertificateFromDirectory(string path, SecureString certificatePassword = null)
+        public X509Certificate2Collection LoadCertificateFromStore()
+        {
+            var store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
+            store.Open(OpenFlags.ReadOnly);
+            var certificates = store.Certificates.Cast<X509Certificate2>().Where(c => c.FriendlyName == "QlikClient")
+                .ToArray();
+            store.Close();
+            if (certificates.Any())
+            {
+                Console.WriteLine("Successfully loaded client certificate from store.");
+                return new X509Certificate2Collection(certificates);
+            }
+
+            Console.WriteLine("Failed to load client certificate from store.");
+            Environment.Exit(1);
+            return null;
+        }
+
+        public X509Certificate2Collection LoadCertificateFromDirectory(string path, SecureString certificatePassword = null)
         {
             var clientCertPath = Path.Combine(path, "client.pfx");
             if (!Directory.Exists(path)) throw new DirectoryNotFoundException(path);
             if (!File.Exists(clientCertPath)) throw new FileNotFoundException(clientCertPath);
             var certificate = certificatePassword == null ? new X509Certificate2(clientCertPath) : new X509Certificate2(clientCertPath, certificatePassword);
-            _certificates = new X509Certificate2Collection(certificate);
+            return new X509Certificate2Collection(certificate);
         }
 
         public string Get(string endpoint)
